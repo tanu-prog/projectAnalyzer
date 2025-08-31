@@ -1,29 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { 
- 
-  AuthService
-  
-} from '../services/api';
+import { AuthService, User, AuthResponse } from '../services/api';
 
-export interface User {
-  _id: string;
-  name: string;
-  email: string;
-  role: 'hr' | 'candidate';
-  profile?: {
-    phone?: string;
-    linkedin?: string;
-    location?: string;
-    bio?: string;
-  };
-  createdAt: string;
-  lastLogin?: string;
-}
-
-export interface AuthResponse {
-  user: User;
-  token: string;
-}
 interface AuthContextType {
   user: User | null;
   setUser: (user: User | null) => void;
@@ -49,43 +26,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('career_ai_token');
-    
-    if (token) {
-      AuthService.setAuthToken(token);
-      // Verify token by getting current user
-      if (
-        AuthService &&
-        typeof AuthService.getCurrentUser === 'function'
-      ) {
+    const initializeAuth = async () => {
+      const token = localStorage.getItem('career_ai_token');
+      const storedUser = localStorage.getItem('career_ai_user');
+      
+      if (token && storedUser) {
         try {
-          const response = AuthService.getCurrentUser();
-          if (response) {
+          AuthService.setAuthToken(token);
+          const response = await AuthService.getCurrentUser();
+          if (response.success) {
             setUser(response.data);
+          } else {
+            // Token invalid, clear storage
+            logout();
           }
-        } catch {
-          // Token invalid, clear it
+        } catch (error) {
+          console.error('Auth initialization failed:', error);
           logout();
-        } finally {
-          setLoading(false);
         }
-      } else {
-        setLoading(false);
       }
-    } else {
       setLoading(false);
-    }
+    };
+
+    initializeAuth();
   }, []);
 
   const login = async (email: string, password: string, role: 'hr' | 'candidate'): Promise<void> => {
     setLoading(true);
     try {
-      const response = await AuthService.login(email, password, role) as unknown as AuthResponse;
-      AuthService.setAuthToken(response.token);
-      setUser(response.user);
-    } catch (error) {
+      const response: AuthResponse = await AuthService.login(email, password, role);
+      if (response.success) {
+        setUser(response.data.user);
+      } else {
+        throw new Error(response.message || 'Login failed');
+      }
+    } catch (error: any) {
       console.error('Login failed:', error);
-      throw error;
+      throw new Error(error.response?.data?.message || error.message || 'Login failed');
     } finally {
       setLoading(false);
     }
@@ -94,20 +71,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = async (email: string, password: string, name: string, role: 'hr' | 'candidate'): Promise<void> => {
     setLoading(true);
     try {
-      const response = await AuthService.register({ email, password, name, role }) as unknown as AuthResponse;
-      AuthService.setAuthToken(response.token);
-      setUser(response.user);
-    } catch (error) {
+      const response: AuthResponse = await AuthService.register({
+        name,
+        email,
+        password,
+        role
+      });
+      if (response.success) {
+        setUser(response.data.user);
+      } else {
+        throw new Error(response.message || 'Registration failed');
+      }
+    } catch (error: any) {
       console.error('Registration failed:', error);
-      throw error;
+      throw new Error(error.response?.data?.message || error.message || 'Registration failed');
     } finally {
       setLoading(false);
     }
   };
 
   const logout = () => {
-    AuthService.setAuthToken('');
-    localStorage.removeItem('career_ai_user');
+    AuthService.logout();
     setUser(null);
   };
 

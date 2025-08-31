@@ -4,12 +4,12 @@ import { Brain, Mail, Lock, User, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('demo@example.com');
-  const [password, setPassword] = useState('password');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [role, setRole] = useState<'hr' | 'candidate'>('candidate');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { login, demoLogin } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -20,7 +20,7 @@ export default function LoginPage() {
     try {
       await login(email, password, role);
       navigate('/dashboard');
-    } catch (error) {
+    } catch (error: any) {
       setError(error.message || 'Login failed. Please check your credentials.');
       console.error('Login failed:', error);
     } finally {
@@ -28,9 +28,26 @@ export default function LoginPage() {
     }
   };
 
-  const handleSkipLogin = () => {
-    navigate('/dashboard');
+  const handleDemoLogin = async (demoRole: 'hr' | 'candidate') => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      const demoCredentials = {
+        hr: { email: 'hr@demo.com', password: 'demo123' },
+        candidate: { email: 'candidate@demo.com', password: 'demo123' }
+      };
+      
+      const { email: demoEmail, password: demoPassword } = demoCredentials[demoRole];
+      await login(demoEmail, demoPassword, demoRole);
+      navigate('/dashboard');
+    } catch (error: any) {
+      setError(error.message || 'Demo login failed');
+    } finally {
+      setLoading(false);
+    }
   };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-secondary-50 flex items-center justify-center px-4">
       <div className="max-w-md w-full">
@@ -45,6 +62,27 @@ export default function LoginPage() {
         </div>
 
         {/* Demo Login Cards */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <button
+            onClick={() => handleDemoLogin('candidate')}
+            disabled={loading}
+            className="p-4 bg-white rounded-lg border border-gray-200 hover:border-primary-300 hover:bg-primary-50 transition-all disabled:opacity-50"
+          >
+            <User className="h-6 w-6 text-primary-600 mx-auto mb-2" />
+            <p className="font-semibold text-gray-900">Demo Candidate</p>
+            <p className="text-xs text-gray-500">Try as job seeker</p>
+          </button>
+          
+          <button
+            onClick={() => handleDemoLogin('hr')}
+            disabled={loading}
+            className="p-4 bg-white rounded-lg border border-gray-200 hover:border-secondary-300 hover:bg-secondary-50 transition-all disabled:opacity-50"
+          >
+            <Brain className="h-6 w-6 text-secondary-600 mx-auto mb-2" />
+            <p className="font-semibold text-gray-900">Demo HR</p>
+            <p className="text-xs text-gray-500">Try as recruiter</p>
+          </button>
+        </div>
 
         {/* Login Form */}
         <div className="bg-white rounded-xl shadow-lg p-8">
@@ -100,7 +138,7 @@ export default function LoginPage() {
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
                 required
               >
-                <option value="candidate">Candidate</option>
+                <option value="candidate">Job Candidate</option>
                 <option value="hr">HR / Recruiter</option>
               </select>
             </div>

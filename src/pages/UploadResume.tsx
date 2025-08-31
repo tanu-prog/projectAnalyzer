@@ -30,6 +30,7 @@ interface ResumeAnalysis {
     technologies: string[];
   }>;
 }
+
 export default function UploadResume() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -47,8 +48,8 @@ export default function UploadResume() {
         selectedFile.name.endsWith('.docx')) {
       setFile(selectedFile);
       setError('');
-       setUploaded(false);
-       setExtractedData(null);
+      setUploaded(false);
+      setExtractedData(null);
     } else {
       setError('Please upload a PDF or DOCX file');
     }
@@ -70,14 +71,13 @@ export default function UploadResume() {
     setError('');
 
     try {
-      // Upload and analyze resume
       const result = await ResumeService.uploadAndAnalyze(file);
       
       setExtractedData(result.extractedData);
       setAnalysisId(result.resumeId);
       setUploading(false);
       setUploaded(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Resume processing failed:', error);
       setError(error.message || 'Failed to process resume. Please try again.');
       setUploading(false);
@@ -85,7 +85,7 @@ export default function UploadResume() {
   };
 
   const handleFindMatches = () => {
-    if (extractedData) {
+    if (extractedData && analysisId) {
       localStorage.setItem('currentAnalysisId', analysisId);
       navigate('/matches');
     }
@@ -103,6 +103,7 @@ export default function UploadResume() {
       URL.revokeObjectURL(url);
     }
   };
+
   return (
     <div className="space-y-6">
       <div>
@@ -113,8 +114,9 @@ export default function UploadResume() {
       {/* Upload Section */}
       <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-200">
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-800 text-sm">{error}</p>
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-2">
+            <AlertCircle className="h-5 w-5 text-red-600" />
+            <span className="text-red-800 text-sm">{error}</span>
           </div>
         )}
         

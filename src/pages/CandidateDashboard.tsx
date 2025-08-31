@@ -1,27 +1,18 @@
-import React, { Key, ReactNode } from 'react';
-import { Calendar, Clock, MapPin, Video, CheckCircle, AlertCircle } from 'lucide-react';
-import { 
-  ResumeAnalysisService,
-  InterviewSchedulingService,
-  JobMatchingService,
-  FeedbackAnalysisService,
-  AuthService,
-  StorageService
-} from '../services/api';
+import React from 'react';
+import { Calendar, Clock, MapPin, Video, CheckCircle, AlertCircle, User } from 'lucide-react';
+import { InterviewService } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Interview {
-  id: Key | null | undefined;
-  interviewer: ReactNode;
-  position: ReactNode;
-  date: any;
-  time: any;
   _id: string;
   jobId: {
+    _id: string;
     title: string;
     company: string;
     location: string;
   };
   recruiterId: {
+    _id: string;
     name: string;
     email: string;
   };
@@ -31,50 +22,63 @@ interface Interview {
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
   meetingLink?: string;
   notes?: string;
+  candidateBrief?: string;
   slotExpiresAt: string;
+  feedback?: {
+    rating: number;
+    comments: string;
+    strengths: string[];
+    weaknesses: string[];
+    recommendation: string;
+  };
 }
 
 export default function CandidateDashboard() {
-  const [interviews, setInterviews] = React.useState<Interview[]>([]);
-  const [availableSlots, setAvailableSlots] = React.useState<any[]>([]);
-  const [loading, setLoading] = React.useState(false);
+  const { user } = useAuth();
+  const [interviews, setInterviews] = useState<Interview[]>([]);
+  const [loading, setLoading] = useState(false);
 
   React.useEffect(() => {
-    loadInterviews();
-    loadAvailableSlots();
-  }, []);
+    if (user?.role === 'candidate') {
+      loadInterviews();
+    }
+  }, [user]);
 
   const loadInterviews = async () => {
     try {
-      const response = await InterviewSchedulingService.getUserInterviews();
-      setInterviews(response || []);
+      setLoading(true);
+      const response = await InterviewService.getUserInterviews();
+      if (response.success) {
+        setInterviews(response.data);
+      }
     } catch (error) {
       console.error('Failed to load interviews:', error);
-    }
-  };
-
-  const loadAvailableSlots = () => {
-    const slots = localStorage.getItem('availableSlots');
-    if (slots) {
-      setAvailableSlots(JSON.parse(slots));
+    } finally {
+      setLoading(false);
     }
   };
 
   const respondToInterview = async (interviewId: string, response: 'accept' | 'decline') => {
     try {
       setLoading(true);
-      await InterviewSchedulingService.respondToInterview(interviewId, response);
-      await loadInterviews();
-      alert(`Interview ${response}ed successfully!`);
-    } catch (error) {
-      alert(error instanceof Error ? error.message : `Failed to ${response} interview`);
+      const result = await InterviewService.respondToInterview(interviewId, response);
+      if (result.success) {
+        await loadInterviews();
+        alert(`Interview ${response}ed successfully!`);
+      }
+    } catch (error: any) {
+      alert(error.response?.data?.message || `Failed to ${response} interview`);
     } finally {
       setLoading(false);
     }
   };
 
-  const upcomingInterviews = interviews.filter(i => i.status !== 'completed');
-  const pastInterviews = interviews.filter(i => i.status === 'completed');
+  const upcomingInterviews = interviews.filter(i => 
+    i.status !== 'completed' && new Date(i.scheduledDateTime) > new Date()
+  );
+  const pastInterviews = interviews.filter(i => 
+    i.status === 'completed' || new Date(i.scheduledDateTime) <= new Date()
+  );
 
   const formatDate = (dateString: string) =>
     new Date(dateString).toLocaleDateString('en-US', {
@@ -96,11 +100,12 @@ export default function CandidateDashboard() {
       case 'confirmed': return 'bg-green-100 text-green-800';
       case 'pending': return 'bg-yellow-100 text-yellow-800';
       case 'completed': return 'bg-blue-100 text-blue-800';
+      case 'cancelled': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
 
-  function getRatingStars(rating: number): React.ReactNode {
+  const getRatingStars = (rating: number) => {
     const stars = [];
     for (let i = 0; i < 5; i++) {
       stars.push(
@@ -110,7 +115,7 @@ export default function CandidateDashboard() {
       );
     }
     return <div className="flex">{stars}</div>;
-  }
+  };
 
   return (
     <div className="space-y-6">
@@ -130,7 +135,10 @@ export default function CandidateDashboard() {
           </div>
           <p className="text-gray-600 font-medium mt-2">Upcoming</p>
           <p className="text-sm text-blue-600">
-            {upcomingInterviews.length > 0 ? `Next: ${upcomingInterviews[0].date} ${upcomingInterviews[0].time}` : 'None scheduled'}
+            {upcomingInterviews.length > 0 
+              ? `Next: ${formatDate(upcomingInterviews[0].scheduledDateTime)}` 
+              : 'None scheduled'
+            }
           </p>
         </div>
 
@@ -142,7 +150,9 @@ export default function CandidateDashboard() {
             <span className="text-2xl font-bold text-gray-900">{pastInterviews.length}</span>
           </div>
           <p className="text-gray-600 font-medium mt-2">Completed</p>
-          <p className="text-sm text-green-600">{pastInterviews.length > 0 ? 'Recently completed' : 'No completed interviews'}</p>
+          <p className="text-sm text-green-600">
+            {pastInterviews.length > 0 ? 'Recently completed' : 'No completed interviews'}
+          </p>
         </div>
 
         <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
@@ -150,10 +160,12 @@ export default function CandidateDashboard() {
             <div className="w-12 h-12 bg-accent-100 rounded-lg flex items-center justify-center">
               <Clock className="h-6 w-6 text-accent-600" />
             </div>
-            <span className="text-2xl font-bold text-gray-900">{availableSlots.length}</span>
+            <span className="text-2xl font-bold text-gray-900">
+              {interviews.filter(i => i.status === 'pending').length}
+            </span>
           </div>
-          <p className="text-gray-600 font-medium mt-2">Available Slots</p>
-          <p className="text-sm text-accent-600">Ready to book</p>
+          <p className="text-gray-600 font-medium mt-2">Pending Response</p>
+          <p className="text-sm text-accent-600">Awaiting your response</p>
         </div>
 
         <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
@@ -161,10 +173,12 @@ export default function CandidateDashboard() {
             <div className="w-12 h-12 bg-success-100 rounded-lg flex items-center justify-center">
               <AlertCircle className="h-6 w-6 text-success-600" />
             </div>
-            <span className="text-2xl font-bold text-gray-900">85%</span>
+            <span className="text-2xl font-bold text-gray-900">
+              {pastInterviews.filter(i => i.feedback?.rating >= 4).length}
+            </span>
           </div>
-          <p className="text-gray-600 font-medium mt-2">Success Rate</p>
-          <p className="text-sm text-success-600">Above average</p>
+          <p className="text-gray-600 font-medium mt-2">Positive Feedback</p>
+          <p className="text-sm text-success-600">High-rated interviews</p>
         </div>
       </div>
 
@@ -204,34 +218,26 @@ export default function CandidateDashboard() {
                     <p className="text-gray-600">
                       <span className="font-medium">Type:</span> {interview.type} Interview
                     </p>
-                    <p className="text-gray-600">
-                      <span className="font-medium">Interviewer:</span> {interview.recruiterId.name}
-                    </p>
-                    <h3 className="font-semibold text-gray-900">{interview.jobId.title}</h3>
-                    <p className="text-gray-600">{interview.jobId.company}</p>
-                        <Video className="h-4 w-4 text-gray-400" />
-                      <span>{formatDate(interview.scheduledDateTime)} at {formatTime(interview.scheduledDateTime)}</span>
-                         {interview.meetingLink && (
-  <a
-    href={interview.meetingLink}
-    target="_blank"
-    rel="noopener noreferrer"
-    className="inline-flex items-center text-blue-600 hover:underline mt-2"
-  >
-    <Video className="h-4 w-4 mr-1" />
-    Join Meeting
-  </a>
-)}
-
-                    <div className="flex items-center space-x-2">
-                      <Video className="h-4 w-4 text-gray-400" />
-                      <span>{formatDate(interview.scheduledDateTime)} at {formatTime(interview.scheduledDateTime)}</span>
+                    <div className="flex items-center space-x-2 text-gray-600">
+                      <User className="h-4 w-4" />
+                      <span>{interview.recruiterId.name}</span>
                     </div>
+                    {interview.meetingLink && (
+                      <a
+                        href={interview.meetingLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center text-blue-600 hover:underline"
+                      >
+                        <Video className="h-4 w-4 mr-1" />
+                        Join Meeting
+                      </a>
+                    )}
                   </div>
                 </div>
 
                 {interview.notes && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
                     <p className="text-sm text-blue-800">
                       <span className="font-medium">Note:</span> {interview.notes}
                     </p>
@@ -239,7 +245,7 @@ export default function CandidateDashboard() {
                 )}
 
                 {interview.status === 'pending' && (
-                  <div className="flex space-x-3 mt-4">
+                  <div className="flex space-x-3">
                     <button 
                       onClick={() => respondToInterview(interview._id, 'accept')}
                       disabled={loading}
@@ -267,65 +273,58 @@ export default function CandidateDashboard() {
         )}
       </div>
 
-      {/* Available Slots */}
-      {availableSlots.length > 0 && (
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Available Interview Slots</h2>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {availableSlots.map((slot, index) => (
-              <div key={index} className="border border-gray-200 rounded-lg p-4 hover:border-secondary-300 hover:bg-secondary-50 transition-all">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h3 className="font-semibold text-gray-900">{formatDate(slot)}</h3>
-                    <p className="text-gray-600 text-sm">{formatTime(slot)}</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => alert('Interview booking feature coming soon!')}
-                  className="w-full bg-secondary-600 text-white py-2 rounded-lg hover:bg-secondary-700 transition-colors text-sm"
-                >
-                  Book Interview
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Past Interviews */}
       <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
         <h2 className="text-xl font-semibold text-gray-900 mb-4">Interview History</h2>
-        <div className="space-y-4">
-          {pastInterviews.map((interview) => (
-            <div key={interview.id} className="border border-gray-200 rounded-lg p-4">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <h3 className="font-semibold text-gray-900">{interview.position}</h3>
-                  <p className="text-gray-600">Company Interview</p>
-                  <div className="flex items-center space-x-4 text-sm text-gray-500 mt-1">
-                    <span>{formatDate(interview.date)} at {formatTime(interview.time)}</span>
-                    <span>•</span>
-                    <span>with {interview.interviewer}</span>
+        {pastInterviews.length > 0 ? (
+          <div className="space-y-4">
+            {pastInterviews.map((interview) => (
+              <div key={interview._id} className="border border-gray-200 rounded-lg p-4">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h3 className="font-semibold text-gray-900">{interview.jobId.title}</h3>
+                    <p className="text-gray-600">{interview.jobId.company}</p>
+                    <div className="flex items-center space-x-4 text-sm text-gray-500 mt-1">
+                      <span>{formatDate(interview.scheduledDateTime)}</span>
+                      <span>•</span>
+                      <span>with {interview.recruiterId.name}</span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    {interview.feedback?.rating && (
+                      <>
+                        <div className="flex items-center space-x-1 mb-1">
+                          {getRatingStars(interview.feedback.rating)}
+                        </div>
+                        <span className="text-sm text-gray-500">{interview.feedback.rating}/5.0</span>
+                      </>
+                    )}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="flex items-center space-x-1 mb-1">
-                    {getRatingStars(4.0)}
+                
+                {interview.feedback?.comments && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <p className="text-sm text-gray-700">
+                      <span className="font-medium">Feedback:</span> {interview.feedback.comments}
+                    </p>
+                    {interview.feedback.strengths.length > 0 && (
+                      <div className="mt-2">
+                        <span className="font-medium text-green-700">Strengths:</span>
+                        <ul className="text-sm text-green-600 ml-4">
+                          {interview.feedback.strengths.map((strength, index) => (
+                            <li key={index}>• {strength}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                  <span className="text-sm text-gray-500">4.0/5.0</span>
-                </div>
+                )}
               </div>
-              
-              {interview.notes && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                  <p className="text-sm text-gray-700">
-                    <span className="font-medium">Notes:</span> {interview.notes}
-                  </p>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-gray-500 text-center py-8">No interview history available</p>
+        )}
       </div>
     </div>
   );
