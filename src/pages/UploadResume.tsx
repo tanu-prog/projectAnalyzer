@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { Upload, FileText, CheckCircle, AlertCircle, Brain, Download, Eye } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertCircle, Brain, Download, Eye, Edit2 } from 'lucide-react';
 import { ResumeService } from '../services/resumeService';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../hooks/useToast';
+import Toast from '../components/Toast';
+import Modal from '../components/Modal';
 
 interface ResumeAnalysis {
   name: string;
@@ -34,6 +37,7 @@ interface ResumeAnalysis {
 export default function UploadResume() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { toast, showToast, hideToast } = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(false);
@@ -41,6 +45,8 @@ export default function UploadResume() {
   const [extractedData, setExtractedData] = useState<ResumeAnalysis | null>(null);
   const [error, setError] = useState<string>('');
   const [analysisId, setAnalysisId] = useState<string>('');
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editableData, setEditableData] = useState<ResumeAnalysis | null>(null);
 
   const handleFileSelect = (selectedFile: File) => {
     if (selectedFile.type === 'application/pdf' || 
@@ -50,8 +56,11 @@ export default function UploadResume() {
       setError('');
       setUploaded(false);
       setExtractedData(null);
+      showToast('info', 'File selected successfully');
     } else {
-      setError('Please upload a PDF or DOCX file');
+      const errorMsg = 'Please upload a PDF or DOCX file';
+      setError(errorMsg);
+      showToast('error', errorMsg);
     }
   };
 
@@ -74,13 +83,25 @@ export default function UploadResume() {
       const result = await ResumeService.uploadAndAnalyze(file);
       
       setExtractedData(result.extractedData);
+      setEditableData(result.extractedData);
       setAnalysisId(result.resumeId);
       setUploading(false);
       setUploaded(true);
+      showToast('success', 'Resume analyzed successfully!');
     } catch (error: any) {
       console.error('Resume processing failed:', error);
-      setError(error.message || 'Failed to process resume. Please try again.');
+      const errorMsg = error.message || 'Failed to process resume. Please try again.';
+      setError(errorMsg);
+      showToast('error', errorMsg);
       setUploading(false);
+    }
+  };
+
+  const handleSaveEdits = () => {
+    if (editableData) {
+      setExtractedData(editableData);
+      setShowEditModal(false);
+      showToast('success', 'Resume data updated successfully!');
     }
   };
 
@@ -101,14 +122,17 @@ export default function UploadResume() {
       link.download = `resume-analysis-${analysisId}.json`;
       link.click();
       URL.revokeObjectURL(url);
+      showToast('success', 'Analysis downloaded successfully!');
     }
   };
 
   return (
     <div className="space-y-6">
+      <Toast {...toast} onClose={hideToast} />
+      
       <div>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Upload Resume</h1>
-        <p className="text-gray-600">Upload your resume to get AI-powered job matching and recommendations</p>
+        <p className="text-gray-600">Upload your resume to get AI-powered analysis and job matching</p>
       </div>
 
       {/* Upload Section */}
@@ -121,12 +145,12 @@ export default function UploadResume() {
         )}
         
         <div 
-          className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+          className={`border-2 border-dashed rounded-xl p-8 text-center transition-all ${
             dragOver 
               ? 'border-primary-400 bg-primary-50' 
               : uploaded 
               ? 'border-success-400 bg-success-50'
-              : 'border-gray-300 hover:border-primary-400'
+              : 'border-gray-300 hover:border-primary-400 hover:bg-gray-50'
           }`}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
@@ -137,7 +161,7 @@ export default function UploadResume() {
               <CheckCircle className="h-16 w-16 text-success-500 mx-auto" />
               <div>
                 <h3 className="text-xl font-semibold text-gray-900">Resume Uploaded Successfully!</h3>
-                <p className="text-gray-600 mt-2">Your resume has been processed and analyzed.</p>
+                <p className="text-gray-600 mt-2">Your resume has been processed and analyzed by our AI.</p>
               </div>
             </div>
           ) : (
@@ -193,7 +217,7 @@ export default function UploadResume() {
             </div>
             <div>
               <h3 className="font-semibold text-primary-900">Processing Your Resume</h3>
-              <p className="text-primary-700">Our AI is extracting key information and skills...</p>
+              <p className="text-primary-700">Our AI is extracting key information and analyzing your skills...</p>
             </div>
           </div>
         </div>
@@ -202,25 +226,40 @@ export default function UploadResume() {
       {/* Extracted Data Preview */}
       {extractedData && (
         <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">Extracted Information</h2>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold text-gray-900">Resume Analysis Results</h2>
+            <button
+              onClick={() => setShowEditModal(true)}
+              className="flex items-center space-x-2 px-4 py-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+            >
+              <Edit2 className="h-4 w-4" />
+              <span>Edit Details</span>
+            </button>
+          </div>
           
           <div className="grid md:grid-cols-2 gap-6">
             {/* Personal Info */}
-            <div>
-              <h3 className="font-semibold text-gray-900 mb-3">Personal Information</h3>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h3 className="font-semibold text-gray-900 mb-3 flex items-center">
+                <div className="w-2 h-2 bg-primary-500 rounded-full mr-2"></div>
+                Personal Information
+              </h3>
               <div className="space-y-2 text-sm">
-                <p><span className="font-medium">Name:</span> {extractedData.name}</p>
-                <p><span className="font-medium">Email:</span> {extractedData.email}</p>
-                <p><span className="font-medium">Phone:</span> {extractedData.phone}</p>
+                <p><span className="font-medium text-gray-700">Name:</span> <span className="text-gray-900">{extractedData.name}</span></p>
+                <p><span className="font-medium text-gray-700">Email:</span> <span className="text-gray-900">{extractedData.email}</span></p>
+                <p><span className="font-medium text-gray-700">Phone:</span> <span className="text-gray-900">{extractedData.phone}</span></p>
                 {extractedData.linkedin && (
-                  <p><span className="font-medium">LinkedIn:</span> {extractedData.linkedin}</p>
+                  <p><span className="font-medium text-gray-700">LinkedIn:</span> <span className="text-blue-600">{extractedData.linkedin}</span></p>
                 )}
               </div>
             </div>
 
             {/* Skills */}
-            <div>
-              <h3 className="font-semibold text-gray-900 mb-3">Skills</h3>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h3 className="font-semibold text-gray-900 mb-3 flex items-center">
+                <div className="w-2 h-2 bg-secondary-500 rounded-full mr-2"></div>
+                Technical Skills ({extractedData.skills.length})
+              </h3>
               <div className="flex flex-wrap gap-2">
                 {extractedData.skills.map((skill: string, index: number) => (
                   <span 
@@ -234,14 +273,19 @@ export default function UploadResume() {
             </div>
 
             {/* Experience */}
-            <div className="md:col-span-2">
-              <h3 className="font-semibold text-gray-900 mb-3">Experience</h3>
+            <div className="md:col-span-2 bg-gray-50 rounded-lg p-4">
+              <h3 className="font-semibold text-gray-900 mb-3 flex items-center">
+                <div className="w-2 h-2 bg-accent-500 rounded-full mr-2"></div>
+                Work Experience ({extractedData.experience.length} positions)
+              </h3>
               <div className="space-y-4">
                 {extractedData.experience.map((exp: any, index: number) => (
-                  <div key={index} className="border-l-4 border-secondary-400 pl-4">
-                    <h4 className="font-semibold text-gray-900">{exp.title}</h4>
-                    <p className="text-secondary-600 font-medium">{exp.company}</p>
-                    <p className="text-sm text-gray-600 mb-1">{exp.duration}</p>
+                  <div key={index} className="bg-white rounded-lg p-4 border-l-4 border-secondary-400">
+                    <div className="flex justify-between items-start mb-2">
+                      <h4 className="font-semibold text-gray-900">{exp.title}</h4>
+                      <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">{exp.duration}</span>
+                    </div>
+                    <p className="text-secondary-600 font-medium mb-2">{exp.company}</p>
                     <p className="text-sm text-gray-700">{exp.description}</p>
                   </div>
                 ))}
@@ -249,18 +293,21 @@ export default function UploadResume() {
             </div>
 
             {/* Education */}
-            <div className="md:col-span-2">
-              <h3 className="font-semibold text-gray-900 mb-3">Education</h3>
-              <div className="space-y-2">
+            <div className="md:col-span-2 bg-gray-50 rounded-lg p-4">
+              <h3 className="font-semibold text-gray-900 mb-3 flex items-center">
+                <div className="w-2 h-2 bg-success-500 rounded-full mr-2"></div>
+                Education ({extractedData.education.length} degrees)
+              </h3>
+              <div className="grid md:grid-cols-2 gap-4">
                 {extractedData.education.map((edu: any, index: number) => (
-                  <div key={index} className="flex justify-between items-start">
-                    <div>
+                  <div key={index} className="bg-white rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-2">
                       <h4 className="font-semibold text-gray-900">{edu.degree}</h4>
-                      <p className="text-gray-600">{edu.school}</p>
-                      {edu.stream && <p className="text-sm text-gray-500">Stream: {edu.stream}</p>}
-                      {edu.cgpa && <p className="text-sm text-gray-500">CGPA: {edu.cgpa}</p>}
+                      <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">{edu.year}</span>
                     </div>
-                    <span className="text-sm text-gray-500">{edu.year}</span>
+                    <p className="text-gray-600 mb-1">{edu.school}</p>
+                    {edu.stream && <p className="text-sm text-gray-500">Stream: {edu.stream}</p>}
+                    {edu.cgpa && <p className="text-sm text-gray-500">CGPA: {edu.cgpa}</p>}
                   </div>
                 ))}
               </div>
@@ -268,8 +315,11 @@ export default function UploadResume() {
 
             {/* Certifications */}
             {extractedData.certifications && extractedData.certifications.length > 0 && (
-              <div className="md:col-span-2">
-                <h3 className="font-semibold text-gray-900 mb-3">Certifications</h3>
+              <div className="md:col-span-2 bg-gray-50 rounded-lg p-4">
+                <h3 className="font-semibold text-gray-900 mb-3 flex items-center">
+                  <div className="w-2 h-2 bg-warning-500 rounded-full mr-2"></div>
+                  Certifications ({extractedData.certifications.length})
+                </h3>
                 <div className="flex flex-wrap gap-2">
                   {extractedData.certifications.map((cert: string, index: number) => (
                     <span 
@@ -285,13 +335,16 @@ export default function UploadResume() {
 
             {/* Projects */}
             {extractedData.projects && extractedData.projects.length > 0 && (
-              <div className="md:col-span-2">
-                <h3 className="font-semibold text-gray-900 mb-3">Projects</h3>
+              <div className="md:col-span-2 bg-gray-50 rounded-lg p-4">
+                <h3 className="font-semibold text-gray-900 mb-3 flex items-center">
+                  <div className="w-2 h-2 bg-error-500 rounded-full mr-2"></div>
+                  Projects ({extractedData.projects.length})
+                </h3>
                 <div className="space-y-4">
                   {extractedData.projects.map((project: any, index: number) => (
-                    <div key={index} className="border-l-4 border-accent-400 pl-4">
-                      <h4 className="font-semibold text-gray-900">{project.name}</h4>
-                      <p className="text-sm text-gray-700 mb-1">{project.description}</p>
+                    <div key={index} className="bg-white rounded-lg p-4 border-l-4 border-accent-400">
+                      <h4 className="font-semibold text-gray-900 mb-2">{project.name}</h4>
+                      <p className="text-sm text-gray-700 mb-2">{project.description}</p>
                       <div className="flex flex-wrap gap-1">
                         {project.technologies.map((tech: string, techIndex: number) => (
                           <span 
@@ -309,26 +362,107 @@ export default function UploadResume() {
             )}
           </div>
 
-          <div className="mt-6 pt-6 border-t border-gray-200 flex justify-end">
+          <div className="mt-8 pt-6 border-t border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
             <div className="flex space-x-3">
               <button 
                 onClick={handleDownloadAnalysis}
                 className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center space-x-2"
               >
                 <Download className="h-4 w-4" />
-                <span>Download</span>
-              </button>
-              <button 
-                onClick={handleFindMatches}
-                className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors flex items-center space-x-2"
-              >
-                <Eye className="h-4 w-4" />
-                <span>Find Job Matches</span>
+                <span>Download Analysis</span>
               </button>
             </div>
+            <button 
+              onClick={handleFindMatches}
+              className="px-8 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors flex items-center space-x-2 font-semibold"
+            >
+              <Eye className="h-4 w-4" />
+              <span>Find Job Matches</span>
+            </button>
           </div>
         </div>
       )}
+
+      {/* Edit Modal */}
+      <Modal
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        title="Edit Resume Details"
+        size="xl"
+      >
+        {editableData && (
+          <div className="space-y-6">
+            {/* Personal Info */}
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-3">Personal Information</h3>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                  <input
+                    type="text"
+                    value={editableData.name}
+                    onChange={(e) => setEditableData({...editableData, name: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={editableData.email}
+                    onChange={(e) => setEditableData({...editableData, email: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                  <input
+                    type="text"
+                    value={editableData.phone}
+                    onChange={(e) => setEditableData({...editableData, phone: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">LinkedIn</label>
+                  <input
+                    type="text"
+                    value={editableData.linkedin || ''}
+                    onChange={(e) => setEditableData({...editableData, linkedin: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Skills */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Skills (comma separated)</label>
+              <textarea
+                value={editableData.skills.join(', ')}
+                onChange={(e) => setEditableData({...editableData, skills: e.target.value.split(',').map(s => s.trim())})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                rows={3}
+              />
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdits}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

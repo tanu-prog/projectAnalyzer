@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Brain, Mail, Lock, User, AlertCircle, UserPlus } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../hooks/useToast';
+import Toast from '../components/Toast';
 
 export default function SignupPage() {
   const [name, setName] = useState('');
@@ -13,23 +15,38 @@ export default function SignupPage() {
   const [error, setError] = useState('');
   const { register } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { toast, showToast, hideToast } = useToast();
+
+  React.useEffect(() => {
+    const roleParam = searchParams.get('role');
+    if (roleParam === 'hr' || roleParam === 'candidate') {
+      setRole(roleParam);
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      const errorMsg = 'Passwords do not match';
+      setError(errorMsg);
+      showToast('error', errorMsg);
       return;
     }
 
     if (password.length < 6) {
-      setError('Password must be at least 6 characters long');
+      const errorMsg = 'Password must be at least 6 characters long';
+      setError(errorMsg);
+      showToast('error', errorMsg);
       return;
     }
 
     if (!name.trim()) {
-      setError('Please enter your full name');
+      const errorMsg = 'Please enter your full name';
+      setError(errorMsg);
+      showToast('error', errorMsg);
       return;
     }
 
@@ -37,10 +54,12 @@ export default function SignupPage() {
     
     try {
       await register(email, password, name.trim(), role);
+      showToast('success', 'Account created successfully!');
       navigate('/dashboard');
-    } catch (error) {
-      setError('Registration failed. Please try again.');
-      console.error('Signup failed:', error);
+    } catch (error: any) {
+      const errorMsg = error.message || 'Registration failed. Please try again.';
+      setError(errorMsg);
+      showToast('error', errorMsg);
     } finally {
       setLoading(false);
     }
@@ -48,15 +67,19 @@ export default function SignupPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-secondary-50 flex items-center justify-center px-4">
+      <Toast {...toast} onClose={hideToast} />
+      
       <div className="max-w-md w-full">
         {/* Header */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center space-x-2 mb-6">
-            <Brain className="h-8 w-8 text-primary-600" />
+            <div className="w-10 h-10 bg-gradient-to-r from-primary-600 to-secondary-600 rounded-lg flex items-center justify-center">
+              <Brain className="h-6 w-6 text-white" />
+            </div>
             <span className="text-2xl font-bold text-gray-900">CareerAI</span>
           </Link>
           <h2 className="text-3xl font-bold text-gray-900 mb-2">Create Account</h2>
-          <p className="text-gray-600">Join thousands of companies using AI for better hiring</p>
+          <p className="text-gray-600">Join thousands using AI for better hiring</p>
         </div>
 
         {/* Signup Form */}
@@ -69,6 +92,24 @@ export default function SignupPage() {
           )}
           
           <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                I am a...
+              </label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as 'hr' | 'candidate')}
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all appearance-none"
+                  required
+                >
+                  <option value="candidate">Job Candidate</option>
+                  <option value="hr">HR / Recruiter</option>
+                </select>
+              </div>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Full Name
@@ -85,6 +126,7 @@ export default function SignupPage() {
                 />
               </div>
             </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Email Address
@@ -136,24 +178,6 @@ export default function SignupPage() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                I am a...
-              </label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value as 'hr' | 'candidate')}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all appearance-none"
-                  required
-                >
-                  <option value="candidate">Job Candidate</option>
-                  <option value="hr">HR / Recruiter</option>
-                </select>
-              </div>
-            </div>
-
             <button
               type="submit"
               disabled={loading}
@@ -166,7 +190,7 @@ export default function SignupPage() {
           <div className="mt-6 text-center">
             <p className="text-gray-600">
               Already have an account?{' '}
-              <Link to="/login" className="text-primary-600 hover:text-primary-700 font-semibold">
+              <Link to={`/login?role=${role}`} className="text-primary-600 hover:text-primary-700 font-semibold">
                 Sign in
               </Link>
             </p>
